@@ -3,4 +3,4 @@ name = "pocket-scion-osc"
 version = "1.0.0"
 description = "Pocket Scion OSC bridge"
 requires-python = ">=3.13"
-dependencies = ["mido", "python-rtmidi", "python-osc"]
+dependencies = ["python-rtmidi", "python-osc"]

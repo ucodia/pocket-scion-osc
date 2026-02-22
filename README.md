@@ -2,7 +2,13 @@
 
 Lightweight bridge that reads MIDI sysex from an Instruo Pocket Scion and sends the decoded biofeedback stats as OSC bundles (no companion app required).
 
-**OSC addresses:** `/min`, `/max`, `/delta`, `/mean`, `/variance`, `/deviation` (one float each, sent as a single bundle per sysex).
+OSC addresses:
+- `/min`
+- `/max`
+- `/delta`
+- `/mean`
+- `/variance`
+- `/deviation`
 
 ## Requirements
 
@@ -14,17 +20,21 @@ Lightweight bridge that reads MIDI sysex from an Instruo Pocket Scion and sends 
 uv sync
 ```
 
-## Run
+## Usage
 
-```bash
-uv run bridge.py
+Run with `uv run bridge.py`
+
 ```
+usage: bridge.py [-h] [--host HOST] [--port PORT] [--index INDEX] [--debug] [--list | --interactive]
 
-Defaults: OSC → `127.0.0.1:11046`. Override with:
+Pocket Scion OSC bridge
 
-```bash
-uv run bridge.py --host 192.168.1.10 --port 9000
-uv run bridge.py -H 192.168.1.10 -p 9000
+options:
+  -h, --help         show this help message and exit
+  --host, -H HOST    OSC destination host (default: 127.0.0.1)
+  --port, -p PORT    OSC destination port (default: 11046)
+  --index, -i INDEX  Index of the Scion device to bridge (default: 0)
+  --debug, -d        Print OSC bundle data to stdout
+  --list, -l         List connected Scion devices and exit
+  --interactive, -I  Interactively select which Scion device to bridge
 ```
-
-The script picks up the first connected MIDI input whose name contains `scion`.

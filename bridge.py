@@ -2,9 +2,10 @@
 import argparse
 import struct
 import sys
+import time
 from dataclasses import dataclass
 
-import mido
+import rtmidi
 from pythonosc.osc_bundle_builder import OscBundleBuilder, IMMEDIATELY
 from pythonosc.osc_message_builder import OscMessageBuilder
 from pythonosc.udp_client import SimpleUDPClient
@@ -72,27 +73,103 @@ def send_osc(client: SimpleUDPClient, data: ScionData) -> None:
     client.send(bundle.build())
 
 
+def handle_midi(event, data):
+    osc, debug = data
+    message, _ = event
+    if message[0] == 0xF0:
+        result = decode_sysex(tuple(message[1:-1]))
+        if result:
+            if debug:
+                print(result)
+            send_osc(osc, result)
+
+
+def find_scion_devices() -> list[tuple[int, str]]:
+    midi_in = rtmidi.MidiIn()
+    return [(i, name) for i, name in enumerate(midi_in.get_ports()) if "scion" in name.lower()]
+
+
+def print_devices(devices: list[tuple[int, str]]) -> None:
+    for i, (_, name) in enumerate(devices):
+        print(f"[{i}] {name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Pocket Scion OSC bridge")
     parser.add_argument("--host", "-H", default=OSC_HOST, help=f"OSC destination host (default: {OSC_HOST})")
     parser.add_argument("--port", "-p", type=int, default=OSC_PORT, help=f"OSC destination port (default: {OSC_PORT})")
+    parser.add_argument("--index", "-i", type=int, default=0, help="Index of the Scion device to bridge (default: 0)")
+    parser.add_argument("--debug", "-d", action="store_true", help="Print OSC bundle data to stdout")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--list", "-l", action="store_true", help="List connected Scion devices and exit")
+    group.add_argument("--interactive", "-I", action="store_true", help="Interactively select which Scion device to bridge")
     args = parser.parse_args()
 
-    names = mido.get_input_names()
-    scion_port = next((n for n in names if "scion" in n.lower()), None)
-    if scion_port is None:
-        print(f"No Scion MIDI device found. Available: {names or '(none)'}", file=sys.stderr)
+    devices = find_scion_devices()
+    if not devices:
+        all_ports = rtmidi.MidiIn().get_ports()
+        print(f"No Scion MIDI device found. Available: {all_ports or '(none)'}", file=sys.stderr)
         sys.exit(1)
 
-    osc = SimpleUDPClient(args.host, args.port)
-    print(f"MIDI: {scion_port} → OSC: {args.host}:{args.port}")
+    if args.list:
+        print_devices(devices)
+        sys.exit(0)
 
-    with mido.open_input(scion_port) as inport:
-        for msg in inport:
-            if msg.type == "sysex":
-                result = decode_sysex(msg.data)
-                if result:
-                    send_osc(osc, result)
+    if args.interactive:
+        print_devices(devices)
+        try:
+            raw = input(f"Select device index [{args.index}]: ").strip()
+            index = int(raw) if raw else args.index
+        except (ValueError, EOFError):
+            print("Invalid input.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            raw = input(f"OSC host [{args.host}]: ").strip()
+            host = raw if raw else args.host
+        except EOFError:
+            print("Invalid input.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            raw = input(f"OSC port [{args.port}]: ").strip()
+            port = int(raw) if raw else args.port
+        except (ValueError, EOFError):
+            print("Invalid input.", file=sys.stderr)
+            sys.exit(1)
+
+        default_debug = "Y" if args.debug else "N"
+        try:
+            raw = input(f"Debug [{'Y/n' if args.debug else 'y/N'}]: ").strip().lower()
+            debug = args.debug if raw == "" else raw in ("y", "yes")
+        except EOFError:
+            print("Invalid input.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        index = args.index
+        host = args.host
+        port = args.port
+        debug = args.debug
+
+    if not 0 <= index < len(devices):
+        print(f"Index {index} out of range (0-{len(devices) - 1}).", file=sys.stderr)
+        sys.exit(1)
+
+    port_index, port_name = devices[index]
+    osc = SimpleUDPClient(host, port)
+    print(f"MIDI: {port_name} → OSC: {host}:{port}")
+
+    midi_in = rtmidi.MidiIn()
+    midi_in.ignore_types(sysex=False)
+    midi_in.open_port(port_index)
+    midi_in.set_callback(handle_midi, (osc, debug))
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        midi_in.close_port()
 
 
 if __name__ == "__main__":
