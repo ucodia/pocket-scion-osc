@@ -14,6 +14,11 @@ OSC addresses:
 
 - [uv](https://docs.astral.sh/uv/) (recommended)
 
+### Linux only
+
+- Debian/Ubuntu: `apt install libasound2`
+- Fedora/RHEL: `dnf install alsa-lib`
+
 ## Setup
 
 ```bash
